@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, AlertCircle, ShieldAlert } from 'lucide-react';
+import { X, Check, AlertCircle, ShieldAlert, Quote, Info } from 'lucide-react';
 import type { StructuredField } from '../types';
 
 interface ConfirmModalProps {
@@ -15,20 +15,38 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   field,
   onClose,
   onConfirm,
-  currentLanguage
+  currentLanguage,
 }) => {
-  if (!isOpen || !field) return null;
-
   const isHindi = currentLanguage === 'hi';
-  const initialVal = typeof field.value === 'string' ? field.value : (Array.isArray(field.value) ? field.value.join(', ') : '');
-  const [val, setVal] = useState(field.user_confirmed_value || initialVal);
+  const initialVal = field
+    ? typeof field.value === 'string'
+      ? field.value
+      : Array.isArray(field.value)
+      ? field.value.join(', ')
+      : ''
+    : '';
+
+  const [val, setVal] = useState(field?.user_confirmed_value || initialVal);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Update val when field changes
+  React.useEffect(() => {
+    if (field) {
+      setVal(field.user_confirmed_value || initialVal);
+    }
+  }, [field, initialVal]);
+
+  if (!isOpen || !field) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!val.trim()) {
-      setError(isHindi ? 'कृपया मान्य मान दर्ज करें।' : 'Please provide a valid confirmed value.');
+      setError(
+        isHindi
+          ? 'कृपया एक मान्य मान दर्ज करें।'
+          : 'Please provide a valid confirmed value.'
+      );
       return;
     }
     setSubmitting(true);
@@ -37,7 +55,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       await onConfirm(field.key, val.trim());
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Confirmation failed');
+      setError(err.message || (isHindi ? 'पुष्टि सहेजने में त्रुटि।' : 'Confirmation failed.'));
     } finally {
       setSubmitting(false);
     }
@@ -46,53 +64,67 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="modal-dialog">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <h3 id="modal-title" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--slate-800)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShieldAlert size={20} className="text-amber-600" />
-            <span>{isHindi ? 'विवरण की समीक्षा व पुष्टि' : 'Review & Confirm Field'}</span>
-          </h3>
+        {/* Modal Header */}
+        <div className="modal-header">
+          <div className="modal-title-row">
+            <ShieldAlert size={22} className="text-amber-600" />
+            <h3 id="modal-title" className="modal-title">
+              {isHindi ? 'अस्पष्ट विवरण की समीक्षा व पुष्टि' : 'Review & Confirm Uncertain Detail'}
+            </h3>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--slate-400)' }}
+            className="modal-close-btn"
             aria-label="Close dialog"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <p style={{ fontSize: '0.86rem', color: 'var(--slate-600)', marginBottom: '1rem' }}>
+        {/* Core Requirement R7 Explanation */}
+        <p className="modal-lead-text">
           {isHindi
-            ? 'ओसीआर अस्पष्टता या गैर-मानक प्रारूप के कारण इस क्षेत्र की पुष्टि आवश्यक है। मूल निष्कर्षण सुरक्षित रहेगा।'
-            : 'Requirement R7: Review this uncertain extraction. The system will record your confirmation without overwriting the original extraction.'}
+            ? 'पीएस 02 आवश्यकता: ओसीआर अस्पष्टता या गैर-मानक समय प्रारूप के कारण इस क्षेत्र की मानवीय समीक्षा आवश्यक है। मूल निष्कर्षित मान को अलग से सुरक्षित रखा जाएगा।'
+            : 'Requirement R7: This field was flagged due to low character confidence or non-standard formatting. Confirm or edit this value below. The original extraction is preserved separately.'}
         </p>
 
-        <div style={{ padding: '0.85rem', backgroundColor: 'var(--slate-50)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--slate-200)', marginBottom: '1rem' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--slate-500)', textTransform: 'uppercase' }}>
-            {isHindi ? 'मूल निष्कर्षित मान:' : 'Originally Extracted Value:'}
-          </span>
-          <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--slate-800)', marginTop: '0.2rem' }}>
-            {initialVal || (isHindi ? 'सूचना में उल्लेखित नहीं' : 'Not stated in notice')}
-          </p>
+        {/* Originally Extracted Value Box */}
+        <div className="orig-extraction-box">
+          <div className="orig-extraction-label">
+            {isHindi ? 'मूल रूप से निष्कर्षित मान:' : 'Originally Extracted Value (Unmodified):'}
+          </div>
+          <div className="orig-extraction-value">
+            {initialVal || (isHindi ? 'नोटिस में उल्लेखित नहीं' : 'Not stated in notice')}
+          </div>
           {field.uncertainty_reason && (
-            <p style={{ fontSize: '0.78rem', color: 'var(--warning-text)', marginTop: '0.35rem' }}>
-              ⚠️ {field.uncertainty_reason}
-            </p>
+            <div className="uncertainty-reason-alert">
+              <AlertCircle size={14} className="text-amber-700" />
+              <span>
+                <strong>{isHindi ? 'समीक्षा का कारण:' : 'Reason for Review:'}</strong>{' '}
+                {field.uncertainty_reason}
+              </span>
+            </div>
           )}
         </div>
 
+        {/* Notice Evidence Quote */}
         {field.evidence && field.evidence.length > 0 && (
-          <div style={{ marginBottom: '1rem', fontSize: '0.82rem', color: 'var(--slate-600)' }}>
-            <span style={{ fontWeight: 600 }}>{isHindi ? 'सूचना से साक्ष्य:' : 'Notice Evidence:'}</span>
-            <blockquote style={{ fontStyle: 'italic', borderLeft: '2px solid var(--primary-500)', paddingLeft: '0.5rem', marginTop: '0.2rem' }}>
+          <div className="modal-evidence-box">
+            <span className="modal-evidence-label">
+              <Quote size={12} />
+              <span>{isHindi ? 'नोटिस से संबंधित उद्धरण:' : 'Supporting Notice Citation:'}</span>
+            </span>
+            <blockquote className="modal-evidence-quote">
               "{field.evidence[0]}"
             </blockquote>
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label htmlFor="confirm-value-input" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--slate-700)', marginBottom: '0.35rem' }}>
+        {/* Form Input for Confirmation */}
+        <form onSubmit={handleSubmit} className="modal-form">
+          <div className="form-field-group">
+            <label htmlFor="confirm-value-input" className="form-label">
               {isHindi ? 'सत्यापित / सही मान दर्ज करें:' : 'Your Confirmed Value:'}
             </label>
             <input
@@ -100,26 +132,29 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               type="text"
               value={val}
               onChange={(e) => setVal(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.65rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--slate-300)',
-                fontSize: '0.92rem',
-                color: 'var(--slate-800)',
-              }}
+              className="form-input"
               autoFocus
             />
           </div>
 
+          {/* Legal / Administrative Disclaimer */}
+          <div className="modal-disclaimer-card">
+            <Info size={14} className="disclaimer-info-icon" />
+            <span className="disclaimer-info-text">
+              {isHindi
+                ? 'सूचना: उपयोगकर्ता पुष्टि केवल आपकी व्यक्तिगत तैयारी को ट्रैक करने के लिए है। यह आधिकारिक सरकारी सत्यापन नहीं है।'
+                : 'Note: User confirmation is stored as personal preparation metadata. It does NOT constitute official administrative or legal certification.'}
+            </span>
+          </div>
+
           {error && (
-            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger-text)', fontSize: '0.82rem' }}>
+            <div className="modal-error-alert" role="alert">
               <AlertCircle size={15} />
               <span>{error}</span>
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <div className="modal-actions-footer">
             <button
               type="button"
               className="btn btn-secondary"
@@ -134,7 +169,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               disabled={submitting}
             >
               <Check size={16} />
-              <span>{submitting ? (isHindi ? 'सहेजा जा रहा है...' : 'Saving...') : (isHindi ? 'पुष्टि करें व सहेजें' : 'Confirm & Save')}</span>
+              <span>
+                {submitting
+                  ? (isHindi ? 'सहेजा जा रहा है...' : 'Saving...')
+                  : (isHindi ? 'पुष्टि करें व सहेजें' : 'Confirm & Save')}
+              </span>
             </button>
           </div>
         </form>

@@ -1,37 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { HeroSection } from './components/HeroSection';
+import { DemoCardsSection } from './components/DemoCardsSection';
 import { NoticeInputSection } from './components/NoticeInputSection';
 import { ProcessingState } from './components/ProcessingState';
-import { SummaryCard } from './components/SummaryCard';
-import { StructuredFieldsGrid } from './components/StructuredFieldsGrid';
-import { ActionChecklist } from './components/ActionChecklist';
-import { FollowUpQA } from './components/FollowUpQA';
-import { OriginalNoticeViewer } from './components/OriginalNoticeViewer';
+import { ResultsHeader } from './components/ResultsHeader';
+import { MainAnalysisLayout } from './components/MainAnalysisLayout';
+import { HowItWorksSection } from './components/HowItWorksSection';
+import { WhySuchnaSetuSection } from './components/WhySuchnaSetuSection';
+import { PrivacySection } from './components/PrivacySection';
+import { Footer } from './components/Footer';
 import {
   fetchSystemConfig,
   fetchDemoNotices,
+  fetchHealth,
   analyzeNotice,
   confirmField,
 } from './services/api';
-import type { NoticeAnalysisResult, DemoNotice, SystemConfig } from './types';
-import { ArrowLeft, Sparkles, Layers } from 'lucide-react';
+import type {
+  NoticeAnalysisResult,
+  DemoNotice,
+  SystemConfig,
+  HealthStatus,
+} from './types';
+import { AlertCircle } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentLanguage, setCurrentLanguage] = useState<string>('en');
   const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
   const [demoNotices, setDemoNotices] = useState<DemoNotice[]>([]);
   const [analysisResult, setAnalysisResult] = useState<NoticeAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isImageSource, setIsImageSource] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDemoName, setSelectedDemoName] = useState<string | null>(null);
+  const [prefilledText, setPrefilledText] = useState<string>('');
 
   const isHindi = currentLanguage === 'hi';
 
-  // Load initial public config and demo notices
+  // Load initial public config, health check, and demo notices
   useEffect(() => {
     fetchSystemConfig()
       .then(setConfig)
       .catch((err) => console.warn('Config fetch warning:', err));
+
+    fetchHealth()
+      .then(setHealth)
+      .catch((err) => console.warn('Health fetch warning:', err));
 
     fetchDemoNotices()
       .then(setDemoNotices)
@@ -51,15 +67,29 @@ export const App: React.FC = () => {
     try {
       const result = await analyzeNotice(params);
       setAnalysisResult(result);
-      // Smooth scroll down to results
+      // Smooth scroll down to results toolbar
       setTimeout(() => {
-        window.scrollTo({ top: 380, behavior: 'smooth' });
-      }, 100);
+        const el = document.getElementById('results-dashboard');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 150);
     } catch (err: any) {
-      setError(err.message || 'Notice analysis failed. Please try again.');
+      setError(err.message || (isHindi ? 'नोटिस विश्लेषण में त्रुटि। कृपया पुनः प्रयास करें।' : 'Notice analysis failed. Please try again.'));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelectDemo = (demo: DemoNotice) => {
+    setSelectedDemoName(isHindi ? demo.title_hi || demo.title : demo.title);
+    setPrefilledText(demo.sample_text);
+    // Directly run analysis pipeline with this demo notice
+    handleAnalyze({
+      text: demo.sample_text,
+      language: currentLanguage,
+      readingLevel: 'standard',
+    });
   };
 
   const handleLanguageChange = async (newLang: string) => {
@@ -91,7 +121,7 @@ export const App: React.FC = () => {
       confirmedValue,
     });
 
-    // Update local state
+    // Update local state while preserving original extracted value
     setAnalysisResult((prev) => {
       if (!prev) return null;
       const updatedFields = { ...prev.fields };
@@ -117,48 +147,77 @@ export const App: React.FC = () => {
   const handleReset = () => {
     setAnalysisResult(null);
     setError(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSelectedDemoName(null);
+    setPrefilledText('');
+    const el = document.getElementById('workspace');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToWorkspace = () => {
+    const el = document.getElementById('workspace');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const scrollToDemoNotices = () => {
+    const el = document.getElementById('demo-notices');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   return (
     <div className="app-container">
+      {/* 1. Accessible Global Header */}
       <Header
         currentLanguage={currentLanguage}
         onLanguageChange={handleLanguageChange}
         config={config}
+        health={health}
       />
 
       <main className="main-content" role="main">
         {/* Error notification banner */}
         {error && (
-          <div
-            style={{
-              marginBottom: '1.25rem',
-              padding: '0.85rem 1rem',
-              backgroundColor: 'var(--danger-bg)',
-              border: '1px solid var(--danger-border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--danger-text)',
-              fontSize: '0.9rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}
-          >
-            <strong>{isHindi ? 'त्रुटि:' : 'Error:'}</strong> {error}
+          <div className="global-error-banner" role="alert">
+            <AlertCircle size={18} className="error-icon" />
+            <div className="error-body">
+              <strong>{isHindi ? 'त्रुटि:' : 'Error:'}</strong> {error}
+            </div>
           </div>
         )}
 
-        {/* Input Section */}
+        {/* 2. Distinctive Civic-Tech Hero Section */}
+        <HeroSection
+          currentLanguage={currentLanguage}
+          onAnalyzeClick={scrollToWorkspace}
+          onDemoClick={scrollToDemoNotices}
+        />
+
+        {/* 3. Interactive Demonstration Circulars */}
+        <DemoCardsSection
+          demoNotices={demoNotices}
+          currentLanguage={currentLanguage}
+          onSelectDemo={handleSelectDemo}
+          isLoading={isLoading}
+        />
+
+        {/* 4. Streamlined Upload & Paste Workspace */}
         <NoticeInputSection
           onAnalyze={handleAnalyze}
           isLoading={isLoading}
-          demoNotices={demoNotices}
           currentLanguage={currentLanguage}
           onLanguageChange={handleLanguageChange}
+          selectedDemoName={selectedDemoName}
+          initialText={prefilledText}
         />
 
-        {/* Processing State */}
+        {/* 5. Accessible 5-Step Processing State */}
         {isLoading && (
           <ProcessingState
             currentLanguage={currentLanguage}
@@ -166,112 +225,43 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* Results Dashboard */}
+        {/* 6. Rich Analysis Results Experience */}
         {analysisResult && !isLoading && (
-          <div style={{ marginTop: '2rem' }} id="results-dashboard">
-            {/* Top Toolbar */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '1rem',
-                marginBottom: '1.25rem',
-                paddingBottom: '0.75rem',
-                borderBottom: '2px solid var(--slate-200)',
-              }}
-            >
-              <div>
-                <span
-                  style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    color: 'var(--primary-800)',
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  {isHindi ? 'परिणाम डैशबोर्ड' : 'Results Dashboard'}
-                </span>
-                <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--slate-900)' }}>
-                  {isHindi ? 'विश्लेषित सूचना एवं अगले कदम' : 'Accessible Notice Breakdown & Next Steps'}
-                </h2>
-              </div>
+          <div className="analysis-results-wrapper">
+            {/* Results Toolbar Header */}
+            <ResultsHeader
+              result={analysisResult}
+              currentLanguage={currentLanguage}
+              onLanguageChange={handleLanguageChange}
+              onReset={handleReset}
+              onScrollToWorkspace={scrollToWorkspace}
+            />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <span
-                  className="badge badge-model"
-                  title={analysisResult.is_mock_inference ? 'Evaluation Adapter (Offline)' : 'Live Gemma 4 Inference'}
-                >
-                  <Sparkles size={13} />
-                  <span>{analysisResult.model_used}</span>
-                </span>
-
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleReset}
-                  style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem' }}
-                >
-                  <ArrowLeft size={15} />
-                  <span>{isHindi ? 'दूसरा नोटिस जांचें' : 'Analyze Another Notice'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Summary Card */}
-            <SummaryCard result={analysisResult} currentLanguage={currentLanguage} />
-
-            {/* 6 Mandatory Structured Fields Grid */}
-            <StructuredFieldsGrid
-              fields={analysisResult.fields}
+            {/* Main 2-Column Responsive Analysis Layout */}
+            <MainAnalysisLayout
+              result={analysisResult}
+              currentLanguage={currentLanguage}
               onConfirmField={handleConfirmField}
-              currentLanguage={currentLanguage}
-            />
-
-            {/* Action Checklist */}
-            <ActionChecklist
-              checklist={analysisResult.checklist}
-              currentLanguage={currentLanguage}
-            />
-
-            {/* Grounded Follow-up Q&A */}
-            <FollowUpQA
-              documentId={analysisResult.document_id}
-              currentLanguage={currentLanguage}
-            />
-
-            {/* Original Notice Text & OCR Inspector */}
-            <OriginalNoticeViewer
-              ocrText={analysisResult.ocr_text}
-              confidence={analysisResult.ocr_confidence}
-              sourceType={analysisResult.source_type}
-              currentLanguage={currentLanguage}
             />
           </div>
         )}
+
+        {/* 7. Supporting Section: How It Works */}
+        <HowItWorksSection currentLanguage={currentLanguage} />
+
+        {/* 8. Supporting Section: Why SuchnaSetu AI */}
+        <WhySuchnaSetuSection currentLanguage={currentLanguage} />
+
+        {/* 9. Supporting Section: Privacy & Responsible AI */}
+        <PrivacySection
+          currentLanguage={currentLanguage}
+          config={config}
+          health={health}
+        />
       </main>
 
-      {/* Footer */}
-      <footer className="footer-wrapper" role="contentinfo">
-        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ textAlign: 'left' }}>
-            <p style={{ fontWeight: 700, color: 'var(--slate-700)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Layers size={16} className="text-emerald-700" />
-              <span>SuchnaSetu AI (सूचना + सेतु)</span>
-            </p>
-            <p style={{ fontSize: '0.78rem', color: 'var(--slate-500)', marginTop: '2px' }}>
-              “From Complex Notices to Clear Next Steps.” • Official PS 02 Track 1 MVP
-            </p>
-          </div>
-
-          <div style={{ textAlign: 'right', fontSize: '0.78rem', color: 'var(--slate-500)' }}>
-            <p><strong>Hacktoberfest HackDay 2026</strong> • 27 October 2026</p>
-            <p>HackDay@Meerut × E-Cell IIMT University • Powered by <strong>Gemma 4</strong></p>
-          </div>
-        </div>
-      </footer>
+      {/* 10. Civic Tech Footer */}
+      <Footer currentLanguage={currentLanguage} />
     </div>
   );
 };

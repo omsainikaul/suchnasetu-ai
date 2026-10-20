@@ -28,3 +28,42 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
+
+# Frontend build outputs
+dist/
+build/
+frontend/dist/
+
+# Local logs
+*.log
+
+# Local model and tool caches
+.paddleocr/

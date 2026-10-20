@@ -138,11 +138,17 @@ class EvidenceService:
 
             # Critical fields like deadline or contact need extra caution
             if key == "deadline" and not needs_confirmation:
-                # Check if deadline contains recognizable date formats or words
-                date_pattern = r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})'
-                if not re.search(date_pattern, str(val), re.IGNORECASE) and not any(kw in str(val).lower() for kw in ["immediate", "today", "within", "days", "hours", "दिनांक", "तारीख"]):
+                val_str = str(val).lower()
+                # Check for ambiguous timing qualifiers (e.g. 'before sunset', 'end of day', 'tentative')
+                ambiguous_qualifiers = ["sunset", "sundown", "end of day", "closing hours", "tentative", "सूर्यास्त", "शाम तक", "लगभग"]
+                if any(qual in val_str for qual in ambiguous_qualifiers):
                     needs_confirmation = True
-                    uncertainty_reason = "Deadline phrasing is ambiguous or non-standard."
+                    uncertainty_reason = "Deadline contains ambiguous cutoff phrasing (e.g. 'before sunset'). Please review and confirm the exact time."
+                else:
+                    date_pattern = r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})'
+                    if not re.search(date_pattern, str(val), re.IGNORECASE) and not any(kw in val_str for kw in ["immediate", "today", "within", "days", "hours", "दिनांक", "तारीख"]):
+                        needs_confirmation = True
+                        uncertainty_reason = "Deadline phrasing is ambiguous or non-standard."
 
             status = FieldStatus.NEEDS_CONFIRMATION if needs_confirmation else FieldStatus.FOUND
             field_confidence = round(ocr_confidence * (0.95 if verified_ev_found else 0.75), 2)

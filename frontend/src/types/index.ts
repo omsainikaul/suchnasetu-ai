@@ -90,3 +90,15 @@ export interface SystemConfig {
   reading_levels: Array<{ code: string; label: string; label_hi: string }>;
   max_upload_size_mb: number;
 }
+
+export interface HealthStatus {
+  status: string;
+  project: string;
+  hindi_name: string;
+  version: string;
+  gemma_model: string;
+  model_provider: string;
+  ocr_ready: boolean;
+  live_inference_available: boolean;
+}
+

@@ -205,34 +205,80 @@ class GemmaAdapter:
         ]
         deadline_val = None
         deadline_ev = []
-        for pat in deadline_patterns:
-            match = re.search(pat, notice_text, re.IGNORECASE)
-            if match:
-                matched_str = match.group(0).strip()
-                deadline_val = match.group(1).strip() if match.lastindex and match.lastindex >= 1 else matched_str
-                # find full sentence containing match
-                for line in lines:
-                    if matched_str in line or deadline_val in line:
-                        deadline_ev.append(line)
+
+        # Check for explicit 'Not stated in notice' on next line under deadline header
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:last date|deadline|due date|submit by|valid till|आवेदन की अंतिम तिथि|अंतिम तिथि|समय सीमा)', line, re.IGNORECASE):
+                parts = line.split(":", 1)
+                if len(parts) > 1 and parts[1].strip():
+                    if "not stated" in parts[1].lower() or "उल्लेखित नहीं" in parts[1]:
+                        deadline_val = "Not stated in notice."
+                        deadline_ev = [line]
                         break
-                break
+                elif idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if "not stated" in next_l.lower() or "उल्लेखित नहीं" in next_l:
+                        deadline_val = "Not stated in notice."
+                        deadline_ev = [line, next_l]
+                        break
+
+        if not deadline_val:
+            for pat in deadline_patterns:
+                match = re.search(pat, notice_text, re.IGNORECASE)
+                if match:
+                    matched_str = match.group(0).strip()
+                    deadline_val = match.group(1).strip() if match.lastindex and match.lastindex >= 1 else matched_str
+                    # find full sentence containing match
+                    for line in lines:
+                        if matched_str in line or deadline_val in line:
+                            deadline_ev.append(line)
+                            break
+                    break
 
         # 3. Extract Eligibility
-        elig_patterns = [
-            r'(?:eligibility|eligible candidates|who can apply|criteria|पात्रता|योग्यता)[:\s]+([^\n\.;]+)',
-            r'(?:all students enrolled|open to students|candidates having|income less than|students with)[^\n\.;]+'
-        ]
         elig_val = None
         elig_ev = []
-        for pat in elig_patterns:
-            match = re.search(pat, notice_text, re.IGNORECASE)
-            if match:
-                elig_val = match.group(0).strip()
-                for line in lines:
-                    if elig_val in line:
-                        elig_ev.append(line)
-                        break
-                break
+
+        # Check for header + next line pattern (handles multi-line notices like '4. ELIGIBILITY / EXEMPTIONS:\nNot stated in notice.')
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:eligibility|exemptions|eligible candidates|who can apply|criteria|पात्रता|योग्यता)', line, re.IGNORECASE):
+                parts = line.split(":", 1)
+                if len(parts) > 1 and parts[1].strip():
+                    candidate = parts[1].strip()
+                    if "not stated" in candidate.lower() or "उल्लेखित नहीं" in candidate:
+                        elig_val = "Not stated in notice."
+                    else:
+                        elig_val = candidate
+                    elig_ev = [line]
+                    break
+                elif idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if "not stated" in next_l.lower() or "उल्लेखित नहीं" in next_l:
+                        elig_val = "Not stated in notice."
+                        elig_ev = [line, next_l]
+                    else:
+                        elig_val = next_l
+                        elig_ev = [line, next_l]
+                    break
+
+        if not elig_val:
+            elig_patterns = [
+                r'(?:eligibility|eligible candidates|who can apply|criteria|पात्रता|योग्यता)[:\s]+([^\n\.;]+)',
+                r'(?:all students enrolled|open to students|candidates having|income less than|students with)[^\n\.;]+'
+            ]
+            for pat in elig_patterns:
+                match = re.search(pat, notice_text, re.IGNORECASE)
+                if match:
+                    matched = match.group(1).strip() if match.lastindex and match.lastindex >= 1 else match.group(0).strip()
+                    if "not stated" in matched.lower() or "उल्लेखित नहीं" in matched:
+                        elig_val = "Not stated in notice."
+                    else:
+                        elig_val = matched
+                    for line in lines:
+                        if elig_val in line:
+                            elig_ev.append(line)
+                            break
+                    break
 
         # 4. Extract Required Documents
         doc_keywords = ["marksheet", "certificate", "aadhaar", "id card", "bonafide", "photograph", "income certificate", "ration card", "दस्तावेज", "प्रमाण पत्र", "अंकतालिका"]

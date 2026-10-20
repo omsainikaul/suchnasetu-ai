@@ -1,6 +1,14 @@
-import type { NoticeAnalysisResult, DemoNotice, AskResponse, SystemConfig } from '../types';
+import type { NoticeAnalysisResult, DemoNotice, AskResponse, SystemConfig, HealthStatus } from '../types';
 
 const API_BASE = '/api';
+
+export async function fetchHealth(): Promise<HealthStatus> {
+  const resp = await fetch(`${API_BASE}/health`);
+  if (!resp.ok) {
+    throw new Error('Failed to load system health');
+  }
+  return resp.json();
+}
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
   const resp = await fetch(`${API_BASE}/config`);
