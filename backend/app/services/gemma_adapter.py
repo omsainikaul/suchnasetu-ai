@@ -123,6 +123,7 @@ class GemmaAdapter:
         Returns: (parsed_json, is_mock, model_identifier)
         """
         user_prompt = build_analysis_prompt(notice_text, language, reading_level)
+        fallback_reason = None
 
         if self.is_live_configured():
             try:
@@ -140,10 +141,15 @@ class GemmaAdapter:
                 return parsed, False, f"{self.model_name} (Live via {self.provider})"
             except Exception as e:
                 logger.error(f"Live Gemma 4 inference failed ({e}). Falling back to deterministic grounding engine.")
+                fallback_reason = f"{type(e).__name__}"
 
         # Fallback to deterministic offline grounding engine
         parsed = self._deterministic_grounded_analysis(notice_text, language, reading_level)
-        return parsed, True, "Gemma 4 (Deterministic Evaluation Adapter - Offline / No API Key)"
+        if fallback_reason:
+            model_id = f"Gemma 4 (Deterministic Evaluation Adapter - Fallback after {fallback_reason})"
+        else:
+            model_id = "Gemma 4 (Deterministic Evaluation Adapter - Offline / No API Key)"
+        return parsed, True, model_id
 
     async def answer_question(
         self,
@@ -156,6 +162,7 @@ class GemmaAdapter:
         Returns: (parsed_json, is_mock, model_identifier)
         """
         user_prompt = build_qa_prompt(notice_text, question, language)
+        fallback_reason = None
 
         if self.is_live_configured():
             try:
@@ -173,10 +180,15 @@ class GemmaAdapter:
                 return parsed, False, f"{self.model_name} (Live via {self.provider})"
             except Exception as e:
                 logger.error(f"Live Gemma 4 Q&A failed ({e}). Falling back to deterministic grounding engine.")
+                fallback_reason = f"{type(e).__name__}"
 
         # Fallback deterministic QA
         parsed = self._deterministic_grounded_qa(notice_text, question, language)
-        return parsed, True, "Gemma 4 (Deterministic Evaluation Adapter - Offline / No API Key)"
+        if fallback_reason:
+            model_id = f"Gemma 4 (Deterministic Evaluation Adapter - Fallback after {fallback_reason})"
+        else:
+            model_id = "Gemma 4 (Deterministic Evaluation Adapter - Offline / No API Key)"
+        return parsed, True, model_id
 
     def _deterministic_grounded_analysis(
         self,
@@ -197,40 +209,39 @@ class GemmaAdapter:
             title = title[:77] + "..."
 
         # 2. Extract Deadline
-        # Look for dates
-        deadline_patterns = [
-            r'(?:last date|deadline|due date|submit by|valid till|दिनांक|अंतिम तिथि|समय सीमा)[:\s]+([^\n\.;]+)',
-            r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
-            r'(\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})'
-        ]
         deadline_val = None
         deadline_ev = []
-
-        # Check for explicit 'Not stated in notice' on next line under deadline header
         for idx, line in enumerate(lines):
-            if re.search(r'(?:last date|deadline|due date|submit by|valid till|आवेदन की अंतिम तिथि|अंतिम तिथि|समय सीमा)', line, re.IGNORECASE):
+            if re.search(r'(?:submission deadline|last date|deadline|due date|submit by|valid till|आवेदन की अंतिम तिथि|अंतिम तिथि|समय सीमा)', line, re.IGNORECASE):
+                deadline_ev.append(line)
                 parts = line.split(":", 1)
-                if len(parts) > 1 and parts[1].strip():
+                if len(parts) > 1 and len(parts[1].strip()) > 5:
                     if "not stated" in parts[1].lower() or "उल्लेखित नहीं" in parts[1]:
                         deadline_val = "Not stated in notice."
-                        deadline_ev = [line]
-                        break
+                    else:
+                        deadline_val = parts[1].strip()
+                    break
                 elif idx + 1 < len(lines):
                     next_l = lines[idx + 1].strip()
                     if "not stated" in next_l.lower() or "उल्लेखित नहीं" in next_l:
                         deadline_val = "Not stated in notice."
-                        deadline_ev = [line, next_l]
-                        break
+                        deadline_ev.append(next_l)
+                    elif not re.match(r'^\d+[\.\)]', next_l):
+                        deadline_val = next_l
+                        deadline_ev.append(next_l)
+                    break
 
         if not deadline_val:
+            deadline_patterns = [
+                r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+                r'(\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})'
+            ]
             for pat in deadline_patterns:
                 match = re.search(pat, notice_text, re.IGNORECASE)
                 if match:
-                    matched_str = match.group(0).strip()
-                    deadline_val = match.group(1).strip() if match.lastindex and match.lastindex >= 1 else matched_str
-                    # find full sentence containing match
+                    deadline_val = match.group(0).strip()
                     for line in lines:
-                        if matched_str in line or deadline_val in line:
+                        if deadline_val in line:
                             deadline_ev.append(line)
                             break
                     break
@@ -238,28 +249,36 @@ class GemmaAdapter:
         # 3. Extract Eligibility
         elig_val = None
         elig_ev = []
-
-        # Check for header + next line pattern (handles multi-line notices like '4. ELIGIBILITY / EXEMPTIONS:\nNot stated in notice.')
+        elig_start_idx = -1
         for idx, line in enumerate(lines):
             if re.search(r'(?:eligibility|exemptions|eligible candidates|who can apply|criteria|पात्रता|योग्यता)', line, re.IGNORECASE):
+                elig_start_idx = idx
+                elig_ev.append(line)
                 parts = line.split(":", 1)
-                if len(parts) > 1 and parts[1].strip():
+                if len(parts) > 1 and len(parts[1].strip()) > 10:
                     candidate = parts[1].strip()
                     if "not stated" in candidate.lower() or "उल्लेखित नहीं" in candidate:
                         elig_val = "Not stated in notice."
                     else:
                         elig_val = candidate
-                    elig_ev = [line]
                     break
-                elif idx + 1 < len(lines):
-                    next_l = lines[idx + 1].strip()
-                    if "not stated" in next_l.lower() or "उल्लेखित नहीं" in next_l:
-                        elig_val = "Not stated in notice."
-                        elig_ev = [line, next_l]
-                    else:
-                        elig_val = next_l
-                        elig_ev = [line, next_l]
+                break
+
+        if not elig_val and elig_start_idx != -1:
+            elig_items = []
+            for j in range(elig_start_idx + 1, min(elig_start_idx + 6, len(lines))):
+                curr_l = lines[j].strip()
+                if re.match(r'^\d+[\.\)]\s+[A-Z]', curr_l):
                     break
+                if "not stated" in curr_l.lower() or "उल्लेखित नहीं" in curr_l:
+                    elig_val = "Not stated in notice."
+                    elig_ev.append(curr_l)
+                    break
+                if curr_l.startswith("-") or curr_l.startswith("•") or re.match(r'^[a-z\d][\.\)]', curr_l) or any(k in curr_l.lower() for k in ["candidate", "resident", "marks", "enrolled", "student"]):
+                    elig_items.append(curr_l)
+                    elig_ev.append(curr_l)
+            if elig_items:
+                elig_val = " ".join(elig_items)
 
         if not elig_val:
             elig_patterns = [
@@ -270,10 +289,7 @@ class GemmaAdapter:
                 match = re.search(pat, notice_text, re.IGNORECASE)
                 if match:
                     matched = match.group(1).strip() if match.lastindex and match.lastindex >= 1 else match.group(0).strip()
-                    if "not stated" in matched.lower() or "उल्लेखित नहीं" in matched:
-                        elig_val = "Not stated in notice."
-                    else:
-                        elig_val = matched
+                    elig_val = "Not stated in notice." if ("not stated" in matched.lower() or "उल्लेखित नहीं" in matched) else matched
                     for line in lines:
                         if elig_val in line:
                             elig_ev.append(line)
@@ -281,13 +297,32 @@ class GemmaAdapter:
                     break
 
         # 4. Extract Required Documents
-        doc_keywords = ["marksheet", "certificate", "aadhaar", "id card", "bonafide", "photograph", "income certificate", "ration card", "दस्तावेज", "प्रमाण पत्र", "अंकतालिका"]
         found_docs = []
         doc_ev = []
-        for line in lines:
-            if any(kw in line.lower() for kw in doc_keywords):
-                found_docs.append(line)
+        doc_start_idx = -1
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:required documents|documents to be attached|documents needed|आवश्यक दस्तावेज)', line, re.IGNORECASE):
+                doc_start_idx = idx
                 doc_ev.append(line)
+                break
+
+        if doc_start_idx != -1:
+            for j in range(doc_start_idx + 1, len(lines)):
+                curr_l = lines[j].strip()
+                if re.match(r'^\d+[\.\)]\s+[A-Z]', curr_l) or curr_l.startswith('[NOTE:'):
+                    break
+                if re.match(r'^(?:[a-dA-D\d][\.\)]|[-*•])', curr_l) or any(kw in curr_l.lower() for kw in ["marksheet", "card", "passbook", "certificate", "aadhaar", "photo"]):
+                    if not any(om in curr_l.lower() for om in ["omitted", "not required", "exempted"]):
+                        found_docs.append(curr_l)
+                        doc_ev.append(curr_l)
+
+        if not found_docs:
+            doc_keywords = ["marksheet", "passbook", "aadhaar", "id card", "bonafide certificate", "photograph", "ration card", "दस्तावेज", "प्रमाण पत्र", "अंकतालिका"]
+            for line in lines:
+                if any(kw in line.lower() for kw in doc_keywords):
+                    if not any(om in line.lower() for om in ["omitted", "not required", "exempted", "eligibility", "resident"]):
+                        found_docs.append(line)
+                        doc_ev.append(line)
 
         # 5. Extract Contact
         contact_patterns = [
@@ -298,52 +333,97 @@ class GemmaAdapter:
         ]
         contact_val = None
         contact_ev = []
-        for pat in contact_patterns:
-            match = re.search(pat, notice_text, re.IGNORECASE)
-            if match:
-                contact_val = match.group(0).strip()
-                for line in lines:
-                    if contact_val in line:
-                        contact_ev.append(line)
-                        break
-                break
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:contact|helpline|helpdesk|संपर्क)', line, re.IGNORECASE):
+                contact_ev.append(line)
+                parts = line.split(":", 1)
+                if len(parts) > 1 and len(parts[1].strip()) > 5:
+                    contact_val = parts[1].strip()
+                    break
+                elif idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if not re.match(r'^\d+[\.\)]', next_l):
+                        contact_val = next_l
+                        contact_ev.append(next_l)
+                    break
+
+        if not contact_val:
+            for pat in contact_patterns:
+                match = re.search(pat, notice_text, re.IGNORECASE)
+                if match:
+                    contact_val = match.group(0).strip()
+                    for line in lines:
+                        if contact_val in line:
+                            contact_ev.append(line)
+                            break
+                    break
 
         # 6. Extract Purpose
-        purpose_patterns = [
-            r'(?:subject|sub|purpose|regarding|ref|विषय|उद्देश्य)[:\s]+([^\n\.;]+)',
-            r'(?:applications are invited for|this is to inform|notice is hereby given that|announces)[^\n\.;]+'
-        ]
         purpose_val = None
         purpose_ev = []
-        for pat in purpose_patterns:
-            match = re.search(pat, notice_text, re.IGNORECASE)
-            if match:
-                purpose_val = match.group(0).strip()
-                for line in lines:
-                    if purpose_val in line:
-                        purpose_ev.append(line)
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:purpose & scheme|purpose|objective|विषय|उद्देश्य)', line, re.IGNORECASE):
+                parts = line.split(":", 1)
+                if len(parts) > 1 and len(parts[1].strip()) > 15:
+                    purpose_val = parts[1].strip()
+                    purpose_ev = [line]
+                    break
+                elif idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if next_l and not re.match(r'^\d+[\.\)]', next_l):
+                        purpose_val = next_l
+                        purpose_ev = [line, next_l]
                         break
-                break
+
+        if not purpose_val:
+            purpose_patterns = [
+                r'(?:subject|sub|purpose|regarding|ref|विषय|उद्देश्य)[:\s]+([^\n\.;]+)',
+                r'(?:applications are invited for|this is to inform|notice is hereby given that|announces)[^\n\.;]+'
+            ]
+            for pat in purpose_patterns:
+                match = re.search(pat, notice_text, re.IGNORECASE)
+                if match:
+                    purpose_val = match.group(0).strip()
+                    for line in lines:
+                        if purpose_val in line:
+                            purpose_ev.append(line)
+                            break
+                    break
         if not purpose_val and len(lines) > 1:
             purpose_val = lines[1]
             purpose_ev = [lines[1]]
 
         # 7. Extract Action
-        action_patterns = [
-            r'(?:how to apply|action required|instructions|procedure|आवेदन कैसे करें|प्रक्रिया)[:\s]+([^\n\.;]+)',
-            r'(?:submit your application|register online at|visit portal|fill out the form|report to)[^\n\.;]+'
-        ]
         action_val = None
         action_ev = []
-        for pat in action_patterns:
-            match = re.search(pat, notice_text, re.IGNORECASE)
-            if match:
-                action_val = match.group(0).strip()
-                for line in lines:
-                    if action_val in line:
-                        action_ev.append(line)
+        for idx, line in enumerate(lines):
+            if re.search(r'(?:how to apply|ac\s*tion|submission procedure|instructions|procedure|आवेदन कैसे करें|प्रक्रिया)', line, re.IGNORECASE):
+                parts = re.split(r'[:\-–]', line, maxsplit=1)
+                if len(parts) > 1 and len(parts[1].strip()) > 5:
+                    action_val = parts[1].strip()
+                    action_ev = [line]
+                    break
+                elif idx + 1 < len(lines):
+                    next_l = lines[idx + 1].strip()
+                    if next_l and not re.match(r'^\d+[\.\)]', next_l):
+                        action_val = next_l
+                        action_ev = [line, next_l]
                         break
-                break
+
+        if not action_val:
+            action_patterns = [
+                r'(?:how to apply|ac\s*tion\s+required|instructions|procedure|आवेदन कैसे करें|प्रक्रिया)[:\s]+([^\n\.;]+)',
+                r'(?:submit your application|submit physical dossier|register online at|visit portal|fill out the form|report to)[^\n\.;]+'
+            ]
+            for pat in action_patterns:
+                match = re.search(pat, notice_text, re.IGNORECASE)
+                if match:
+                    action_val = match.group(0).strip()
+                    for line in lines:
+                        if action_val in line:
+                            action_ev.append(line)
+                            break
+                    break
 
         # Build Plain Language Summary
         summary = ""
@@ -525,6 +605,27 @@ class GemmaAdapter:
             "reservation", "exam", "syllabus", "interview date", "admit card",
             "आय", "जाति", "शुल्क", "फीस", "आरक्षण", "छात्रावास"
         ]
+        # Specific missing or omitted requirement check:
+        # e.g. income certificate or parent income limit omitted from circular
+        if any(term in q_lower for term in ["income", "income certificate", "आय", "आय प्रमाण"]):
+            if "omitted" in full_lower or "not required" in full_lower:
+                ans_en = "An income certificate or parental income cap is not required (it is explicitly noted as omitted from this notice)."
+                ans_hi = "इस परिपत्र में आय प्रमाण पत्र अथवा अभिभावक आय सीमा की आवश्यकता नहीं है (यह इसमें स्पष्ट रूप से छूटा हुआ उल्लेखित है)।"
+                ev_lines = [l for l in lines if any(k in l.lower() for k in ["omitted", "income", "not required"])]
+                return {
+                    "answer": ans_hi if language == "hi" else ans_en,
+                    "is_stated_in_notice": False,
+                    "status": "not_stated_in_notice",
+                    "evidence": ev_lines[:1]
+                }
+            else:
+                return {
+                    "answer": not_stated_hi if language == "hi" else not_stated_en,
+                    "is_stated_in_notice": False,
+                    "status": "not_stated_in_notice",
+                    "evidence": []
+                }
+
         for qualifier in specific_qualifiers:
             if qualifier in q_lower and qualifier not in full_lower:
                 ans_en = f"This information regarding '{qualifier}' is not stated in the supplied notice."

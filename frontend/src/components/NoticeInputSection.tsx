@@ -43,9 +43,12 @@ export const NoticeInputSection: React.FC<NoticeInputSectionProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const prevInitialTextRef = useRef<string | undefined>(undefined);
+
   // Sync initialText if a demo was selected from external section
   useEffect(() => {
-    if (initialText) {
+    if (initialText && initialText !== prevInitialTextRef.current) {
+      prevInitialTextRef.current = initialText;
       setPastedText(initialText);
       setActiveTab('paste');
       setSelectedFile(null);
@@ -55,12 +58,13 @@ export const NoticeInputSection: React.FC<NoticeInputSectionProps> = ({
 
   const handleFileChange = (file: File) => {
     setErrorMsg(null);
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!validTypes.includes(file.type) && !isPdf) {
       setErrorMsg(
         isHindi
-          ? 'अमान्य फ़ाइल प्रकार। कृपया PNG, JPEG या WebP छवि अपलोड करें।'
-          : 'Invalid file type. Please upload PNG, JPEG or WebP images.'
+          ? 'अमान्य फ़ाइल प्रकार। कृपया PNG, JPEG, WebP छवि या PDF दस्तावेज़ अपलोड करें।'
+          : 'Invalid file type. Please upload PNG, JPEG, WebP images or PDF documents.'
       );
       return;
     }
@@ -196,7 +200,7 @@ export const NoticeInputSection: React.FC<NoticeInputSectionProps> = ({
           onClick={() => setActiveTab('upload')}
         >
           <ImageIcon size={18} />
-          <span>{isHindi ? 'छवि दस्तावेज़ अपलोड (RapidOCR)' : 'Upload Notice Photo (OCR)'}</span>
+          <span>{isHindi ? 'छवि / PDF दस्तावेज़ अपलोड' : 'Upload Notice Photo / PDF'}</span>
         </button>
         <button
           type="button"
@@ -239,7 +243,7 @@ export const NoticeInputSection: React.FC<NoticeInputSectionProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"
                   style={{ display: 'none' }}
                   onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])}
                 />

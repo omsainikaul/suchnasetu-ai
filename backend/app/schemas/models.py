@@ -109,3 +109,167 @@ class HealthResponse(BaseModel):
     model_provider: str
     ocr_ready: bool
     live_inference_available: bool
+
+# --- Cross-Notice Revision & Relationship Schemas ---
+
+class RelationshipType(str, Enum):
+    AMENDMENT = "AMENDMENT"
+    EXTENSION = "EXTENSION"
+    CANCELLATION = "CANCELLATION"
+    CORRIGENDUM = "CORRIGENDUM"
+    ADDENDUM = "ADDENDUM"
+    CLARIFICATION = "CLARIFICATION"
+    RELATED = "RELATED"
+    SUPERSEDED = "SUPERSEDED"
+    UNRESOLVED = "UNRESOLVED"
+
+class ChangeCategory(str, Enum):
+    UNCHANGED = "UNCHANGED"
+    MODIFIED = "MODIFIED"
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    UNCERTAIN = "UNCERTAIN"
+
+class NoticeRelationship(BaseModel):
+    source_notice_id: str
+    target_notice_id: str
+    relationship_type: RelationshipType
+    confidence: str = "HIGH"  # "HIGH" | "MEDIUM" | "LOW"
+    is_explicit: bool = True
+    evidence_quote: str = ""
+    source_reference: Optional[str] = None
+    explanation: str = ""
+
+class RevisionEntry(BaseModel):
+    field_name: str
+    display_name: str
+    old_value: str
+    new_value: str
+    change_category: ChangeCategory
+    old_evidence_quote: Optional[str] = None
+    new_evidence_quote: Optional[str] = None
+    old_page: Optional[int] = None
+    new_page: Optional[int] = None
+    requires_review: bool = False
+    explanation: str = ""
+
+class RevisionLedger(BaseModel):
+    source_notice_id: str
+    target_notice_id: str
+    source_title: str
+    target_title: str
+    relationship: NoticeRelationship
+    entries: List[RevisionEntry]
+    summary_of_changes: str
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class CompareNoticesRequest(BaseModel):
+    source_text: str
+    target_text: str
+    source_title: str = "Original Notice"
+    target_title: str = "Revised Notice / Corrigendum"
+    source_notice_id: str = "source_doc"
+    target_notice_id: str = "target_doc"
+
+# --- Explainable Eligibility Engine Schemas ---
+
+class CriterionType(str, Enum):
+    AGE = "AGE"
+    PERCENTAGE = "PERCENTAGE"
+    QUALIFICATION = "QUALIFICATION"
+    CATEGORY = "CATEGORY"
+    RESIDENCY = "RESIDENCY"
+    GENDER = "GENDER"
+    OTHER = "OTHER"
+
+class EvaluationStatus(str, Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+class EligibilityCriterion(BaseModel):
+    id: str
+    criterion_type: CriterionType
+    description: str
+    operator: str = "=="  # "<=", ">=", "==", "CONTAINS"
+    threshold_value: str
+    evidence_quote: str = ""
+    category_relaxation: Optional[Dict[str, str]] = None
+
+class ApplicantProfile(BaseModel):
+    age: Optional[int] = None
+    date_of_birth: Optional[str] = None
+    percentage: Optional[float] = None
+    cgpa: Optional[float] = None
+    qualifications: List[str] = Field(default_factory=list)
+    category: Optional[str] = None  # "GEN", "OBC", "SC", "ST", "EWS", etc.
+    gender: Optional[str] = None
+    residency: Optional[str] = None
+    notes: Optional[str] = None
+
+class CriterionEvaluationResult(BaseModel):
+    criterion_id: str
+    criterion_type: CriterionType
+    description: str
+    status: EvaluationStatus
+    applicant_value: str
+    requirement_value: str
+    evidence_quote: str = ""
+    explanation: str
+    missing_info: Optional[str] = None
+
+class EligibilityAssessment(BaseModel):
+    session_id: Optional[str] = None
+    overall_status: str  # "ELIGIBLE" | "NOT_ELIGIBLE" | "INCONCLUSIVE"
+    results: List[CriterionEvaluationResult]
+    summary: str
+
+class EvaluateEligibilityRequest(BaseModel):
+    notice_text: Optional[str] = None
+    document_id: Optional[str] = None
+    profile: ApplicantProfile
+
+# --- Trust Engine Verification Schemas ---
+
+class EvidenceVerificationStatus(str, Enum):
+    VERIFIED = "VERIFIED"
+    UNVERIFIED_HALLUCINATION = "UNVERIFIED_HALLUCINATION"
+    AMBIGUOUS_PARTIAL = "AMBIGUOUS_PARTIAL"
+
+class TrustEvidence(BaseModel):
+    quote: str
+    is_grounded: bool
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
+    verification_status: EvidenceVerificationStatus
+    similarity_score: float = 1.0
+
+class VerifyEvidenceRequest(BaseModel):
+    source_text: str
+    excerpt: str
+    claim_text: Optional[str] = None
+
+class VerifyEvidenceResponse(BaseModel):
+    is_grounded: bool
+    status: EvidenceVerificationStatus
+    evidence: TrustEvidence
+    explanation: str
+
+# --- Export Schemas ---
+
+class ExportMarkdownRequest(BaseModel):
+    document_id: Optional[str] = None
+    title: str = "SuchnaSetu AI Action Dossier"
+    summary: str = ""
+    fields: Optional[Dict[str, Any]] = None
+    checklist: Optional[List[Dict[str, Any]]] = None
+
+class ExportIcsRequest(BaseModel):
+    title: str = "Notice Submission Deadline"
+    deadline: str
+    document_id: Optional[str] = None
+    action: Optional[str] = None
+    source_text: Optional[str] = None

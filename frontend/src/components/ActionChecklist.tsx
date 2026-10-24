@@ -13,23 +13,82 @@ import {
 } from 'lucide-react';
 import type { ChecklistItem } from '../types';
 
+import { saveDocumentState } from '../services/storage';
+
+function computeDeadlineStatus(deadlineStr?: string, isHindi: boolean = false) {
+  if (!deadlineStr || !deadlineStr.trim()) return null;
+  const lower = deadlineStr.toLowerCase();
+  if (lower.includes('unclear') || lower.includes('not stated') || lower.includes('tbd') || lower.includes('sunset')) {
+    return { label: isHindi ? 'समीक्षा आवश्यक' : 'Review needed', type: 'review' };
+  }
+  const match = deadlineStr.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (!match) return null;
+  const d = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10) - 1;
+  let y = parseInt(match[3], 10);
+  if (y < 100) y += 2000;
+  const targetDate = new Date(y, m, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { label: isHindi ? 'समय समाप्त' : 'Past deadline', type: 'past' };
+  if (diffDays === 0) return { label: isHindi ? 'आज अंतिम तिथि' : 'Due today', type: 'today' };
+  if (diffDays <= 3) return { label: isHindi ? `${diffDays} दिन शेष` : `Due in ${diffDays}d`, type: 'soon' };
+  return { label: isHindi ? 'आगामी' : 'Upcoming', type: 'upcoming' };
+}
+
 interface ActionChecklistProps {
   checklist: ChecklistItem[];
   currentLanguage: string;
+  documentId?: string;
   onHighlightEvidence?: (evidenceSnippet: string) => void;
 }
 
 export const ActionChecklist: React.FC<ActionChecklistProps> = ({
   checklist,
   currentLanguage,
+  documentId,
   onHighlightEvidence,
 }) => {
   const isHindi = currentLanguage === 'hi';
-  const [completedItems, setCompletedItems] = useState<Record<string, boolean>>({});
+  const [completedItems, setCompletedItems] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const item of checklist) {
+      const key = item.id || `step_${item.step_number}`;
+      if (item.completed) {
+        init[key] = true;
+      }
+    }
+    return init;
+  });
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
 
+  const prevDocIdRef = React.useRef<string | undefined>(documentId);
+
+  // Re-sync if document session switches
+  React.useEffect(() => {
+    if (documentId !== prevDocIdRef.current) {
+      prevDocIdRef.current = documentId;
+      const next: Record<string, boolean> = {};
+      for (const item of checklist) {
+        const key = item.id || `step_${item.step_number}`;
+        if (item.completed) {
+          next[key] = true;
+        }
+      }
+      setCompletedItems(next);
+    }
+  }, [checklist, documentId]);
+
   const toggleItem = (id: string) => {
-    setCompletedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCompletedItems((prev) => {
+      const updated = { ...prev, [id]: !prev[id] };
+      if (documentId) {
+        const completedIds = Object.keys(updated).filter((k) => updated[k]);
+        saveDocumentState(documentId, { completedChecklistIds: completedIds });
+      }
+      return updated;
+    });
   };
 
   const toggleEvidence = (id: string, snippet?: string) => {
@@ -128,12 +187,31 @@ export const ActionChecklist: React.FC<ActionChecklistProps> = ({
 
                   {/* Metadata Chips: Deadline & Documents Needed */}
                   <div className="item-meta-chips">
-                    {item.deadline && (
-                      <span className="meta-chip deadline-chip">
-                        <Calendar size={12} />
-                        <span>{isHindi ? 'अंतिम तिथि:' : 'Deadline:'} {item.deadline}</span>
-                      </span>
-                    )}
+                    {item.deadline && (() => {
+                      const dlStatus = computeDeadlineStatus(item.deadline, isHindi);
+                      return (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span className="meta-chip deadline-chip">
+                            <Calendar size={12} />
+                            <span>{isHindi ? 'अंतिम तिथि:' : 'Deadline:'} {item.deadline}</span>
+                          </span>
+                          {dlStatus && (
+                            <span
+                              className={`status-badge-toolbar ${
+                                dlStatus.type === 'past'
+                                  ? 'warning'
+                                  : dlStatus.type === 'today' || dlStatus.type === 'soon'
+                                  ? 'warning'
+                                  : 'success'
+                              }`}
+                              style={{ fontSize: '11px', padding: '2px 8px' }}
+                            >
+                              {dlStatus.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {item.documents_needed && item.documents_needed.length > 0 && (
                       <span className="meta-chip docs-chip">

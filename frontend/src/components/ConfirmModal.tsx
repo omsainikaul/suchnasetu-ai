@@ -29,15 +29,47 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   const [val, setVal] = useState(field?.user_confirmed_value || initialVal);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const prevFieldKeyRef = React.useRef<string | null>(null);
 
-  // Update val when field changes
+  // Keyboard navigation & Escape-to-close
   React.useEffect(() => {
-    if (field) {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    const focusTimer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(focusTimer);
+    };
+  }, [isOpen, onClose]);
+
+  // Sync val when field changes
+  React.useEffect(() => {
+    if (field && field.key !== prevFieldKeyRef.current) {
+      prevFieldKeyRef.current = field.key;
       setVal(field.user_confirmed_value || initialVal);
+      setError(null);
     }
   }, [field, initialVal]);
 
   if (!isOpen || !field) return null;
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && !submitting) {
+      onClose();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +94,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      onClick={handleBackdropClick}
+    >
       <div className="modal-dialog">
         {/* Modal Header */}
         <div className="modal-header">
@@ -128,12 +166,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               {isHindi ? 'सत्यापित / सही मान दर्ज करें:' : 'Your Confirmed Value:'}
             </label>
             <input
+              ref={inputRef}
               id="confirm-value-input"
               type="text"
               value={val}
               onChange={(e) => setVal(e.target.value)}
               className="form-input"
-              autoFocus
             />
           </div>
 

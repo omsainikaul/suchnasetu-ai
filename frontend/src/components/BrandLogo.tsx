@@ -73,6 +73,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           <div className="brand-primary-line">
             <span className="brand-name">SuchnaSetu</span>
             <span className="brand-ai-chip">AI</span>
+            <span className="brand-ps-badge">PS 02</span>
             <span className="brand-hindi-pill">सूचना + सेतु</span>
           </div>
           <p className="brand-tagline">

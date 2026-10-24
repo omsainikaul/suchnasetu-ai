@@ -147,6 +147,15 @@ export const FollowUpQA: React.FC<FollowUpQAProps> = ({
         </div>
       </form>
 
+      {/* Accessible Live Region for Screen Readers */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {loading
+          ? (isHindi ? 'उत्तर तैयार किया जा रहा है...' : 'Generating grounded response...')
+          : qaHistory.length > 0
+          ? `${isHindi ? 'नया उत्तर प्राप्त हुआ:' : 'New answer received:'} ${qaHistory[0].answer}`
+          : ''}
+      </div>
+
       {/* Error Banner */}
       {error && (
         <div className="qa-error-banner" role="alert">
@@ -183,7 +192,7 @@ export const FollowUpQA: React.FC<FollowUpQAProps> = ({
                       ) : (
                         <span className="qa-status-pill status-found">
                           <CheckCircle2 size={13} />
-                          <span>{isHindi ? 'नोटिस में सत्यापित' : 'Grounded in Notice'}</span>
+                          <span>{isHindi ? 'नोटिस के पाठ से समर्थित' : 'Grounded in Notice'}</span>
                         </span>
                       )}
                     </div>

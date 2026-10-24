@@ -9,8 +9,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   RotateCcw,
+  Calendar,
+  FileDown,
 } from 'lucide-react';
 import type { NoticeAnalysisResult } from '../types';
+import { exportCalendarIcs, exportMarkdown } from '../services/api';
 
 interface ResultsHeaderProps {
   result: NoticeAnalysisResult;
@@ -51,6 +54,35 @@ export const ResultsHeader: React.FC<ResultsHeaderProps> = ({
     window.print();
   };
 
+  const handleExportCalendar = async () => {
+    try {
+      const dlVal = Array.isArray(result.fields?.deadline?.value)
+        ? result.fields.deadline.value.join(', ')
+        : (result.fields?.deadline?.value || 'Date unclear');
+      await exportCalendarIcs({
+        title: result.notice_title || 'Notice Submission Deadline',
+        deadline: dlVal,
+        action: result.fields?.action?.value ? String(result.fields.action.value) : undefined,
+        documentId: result.document_id,
+      });
+    } catch (err) {
+      console.error('Calendar export failed:', err);
+    }
+  };
+
+  const handleExportMarkdown = async () => {
+    try {
+      await exportMarkdown({
+        title: result.notice_title,
+        summary: result.summary,
+        fields: result.fields,
+        checklist: result.checklist,
+      });
+    } catch (err) {
+      console.error('Markdown export failed:', err);
+    }
+  };
+
   const hasUncertainty = result.needs_user_confirmation;
 
   return (
@@ -73,7 +105,7 @@ export const ResultsHeader: React.FC<ResultsHeaderProps> = ({
             ) : (
               <span className="status-badge-toolbar success">
                 <CheckCircle2 size={13} />
-                <span>{isHindi ? 'तथ्य सत्यापित' : 'Grounded & Ready'}</span>
+                <span>{isHindi ? 'साक्ष्य समर्थित' : 'Grounded & Ready'}</span>
               </span>
             )}
           </div>
@@ -86,7 +118,16 @@ export const ResultsHeader: React.FC<ResultsHeaderProps> = ({
                 ? (isHindi ? 'स्रोत: ओसीआर छवि' : 'Source: RapidOCR Image')
                 : (isHindi ? 'स्रोत: सीधा पाठ' : 'Source: Pasted Text')}
             </span>
-            <span className="source-meta-tag model-meta-tag" title={result.model_used}>
+            <span
+              className={`source-meta-tag model-meta-tag ${
+                !result.is_mock_inference
+                  ? 'live-mode-tag'
+                  : result.model_used.includes('Fallback')
+                  ? 'fallback-mode-tag'
+                  : 'eval-mode-tag'
+              }`}
+              title={result.model_used}
+            >
               <Sparkles size={12} />
               <span>{result.model_used}</span>
             </span>
@@ -135,15 +176,38 @@ export const ResultsHeader: React.FC<ResultsHeaderProps> = ({
             <span>JSON</span>
           </button>
 
-          {/* Print / Save PDF */}
+          {/* Export Markdown */}
           <button
             type="button"
-            className="btn btn-toolbar hide-on-print"
-            onClick={handlePrint}
-            title={isHindi ? 'प्रिंट करें या पीडीएफ सहेजें' : 'Print or save report'}
+            className="btn btn-toolbar"
+            onClick={handleExportMarkdown}
+            title={isHindi ? 'मार्कडाउन रिपोर्ट डाउनलोड करें' : 'Download Markdown action dossier'}
           >
-            <Printer size={14} />
-            <span>{isHindi ? 'प्रिंट' : 'Print'}</span>
+            <FileDown size={14} />
+            <span>MD</span>
+          </button>
+
+          {/* Add to Calendar (.ics) */}
+          <button
+            type="button"
+            className="btn btn-toolbar"
+            onClick={handleExportCalendar}
+            title={isHindi ? 'कैलेंडर (.ics) में जोड़ें' : 'Add deadline to Calendar (.ics)'}
+          >
+            <Calendar size={14} className="text-emerald-700" />
+            <span>{isHindi ? 'कैलेंडर' : '.ICS'}</span>
+          </button>
+
+          {/* Print / Save Citizen Action Slip */}
+          <button
+            type="button"
+            className="btn btn-toolbar btn-toolbar-action-slip hide-on-print"
+            onClick={handlePrint}
+            title={isHindi ? 'नागरिक एक्शन स्लिप प्रिंट करें या पीडीएफ के रूप में सहेजें' : 'Print Citizen Action Slip or save as PDF'}
+            aria-label={isHindi ? 'एक्शन स्लिप प्रिंट करें' : 'Print Action Slip'}
+          >
+            <Printer size={15} className="text-emerald-700" />
+            <span className="font-semibold">{isHindi ? 'एक्शन स्लिप प्रिंट करें' : 'Print Action Slip'}</span>
           </button>
 
           {/* Return to Notice Input */}

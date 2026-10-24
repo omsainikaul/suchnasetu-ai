@@ -91,6 +91,11 @@ export const ProcessingState: React.FC<ProcessingStateProps> = ({
           </p>
         </div>
 
+        {/* Screen Reader Live Announcement */}
+        <div className="sr-only" aria-live="assertive" aria-atomic="true">
+          {stages[currentStage - 1].title}: {stages[currentStage - 1].desc}
+        </div>
+
         {/* 5-Step Progress Stack */}
         <div className="stages-stack">
           {stages.map((stage) => {
