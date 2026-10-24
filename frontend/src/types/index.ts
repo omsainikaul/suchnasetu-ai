@@ -102,3 +102,136 @@ export interface HealthStatus {
   live_inference_available: boolean;
 }
 
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  available: boolean;
+  model: string;
+  is_current: boolean;
+}
+
+export interface NoticeRelationship {
+  source_notice_id: string;
+  target_notice_id: string;
+  relationship_type: 'AMENDMENT' | 'EXTENSION' | 'CANCELLATION' | 'CORRIGENDUM' | 'ADDENDUM' | 'CLARIFICATION' | 'RELATED' | 'SUPERSEDED' | 'UNRESOLVED';
+  confidence: string;
+  is_explicit: boolean;
+  evidence_quote: string;
+  source_reference?: string;
+  explanation: string;
+}
+
+export interface RevisionEntry {
+  field_name: string;
+  display_name: string;
+  old_value: string;
+  new_value: string;
+  change_category: 'UNCHANGED' | 'MODIFIED' | 'ADDED' | 'REMOVED' | 'UNCERTAIN';
+  old_evidence_quote?: string;
+  new_evidence_quote?: string;
+  requires_review: boolean;
+  explanation: string;
+}
+
+export interface RevisionLedger {
+  source_notice_id: string;
+  target_notice_id: string;
+  source_title: string;
+  target_title: string;
+  relationship: NoticeRelationship;
+  entries: RevisionEntry[];
+  summary_of_changes: string;
+  created_at?: string;
+}
+
+export interface EligibilityCriterion {
+  id: string;
+  criterion_type: 'AGE' | 'PERCENTAGE' | 'QUALIFICATION' | 'CATEGORY' | 'RESIDENCY' | 'GENDER' | 'OTHER';
+  description: string;
+  operator: string;
+  threshold_value: string;
+  evidence_quote: string;
+  category_relaxation?: Record<string, string>;
+}
+
+export interface CriterionEvaluationResult {
+  criterion_id: string;
+  criterion_type: string;
+  description: string;
+  status: 'PASS' | 'FAIL' | 'UNKNOWN' | 'NOT_APPLICABLE';
+  applicant_value: string;
+  requirement_value: string;
+  evidence_quote: string;
+  explanation: string;
+  missing_info?: string;
+}
+
+export interface EligibilityAssessment {
+  session_id?: string;
+  overall_status: 'ELIGIBLE' | 'NOT_ELIGIBLE' | 'INCONCLUSIVE';
+  results: CriterionEvaluationResult[];
+  summary: string;
+}
+
+export interface ApplicantProfile {
+  age?: number;
+  percentage?: number;
+  cgpa?: number;
+  qualifications: string[];
+  category?: string;
+  gender?: string;
+  residency?: string;
+  notes?: string;
+}
+
+export type WorkspaceId =
+  | 'dashboard'
+  | 'ingestion'
+  | 'facts'
+  | 'summary_actions'
+  | 'revision_ledger'
+  | 'eligibility'
+  | 'qa'
+  | 'action_navigator'
+  | 'multi_notice_timeline'
+  | 'history'
+  | 'settings_health'
+  | 'demo_notices'
+  | 'diagnostics'
+  | 'home';
+
+export interface StoredNoticeSummary {
+  documentId: string;
+  noticeTitle: string;
+  savedAt: string;
+  sourceType: string;
+  deadline?: string;
+  groundedFieldsCount: number;
+  ocrConfidence?: number;
+  modelUsed?: string;
+  rawText?: string;
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  available: boolean;
+  model: string;
+  is_current: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export type AuthPageView = 'login' | 'signup' | 'verify_email' | 'forgot_password' | 'reset_password';
+
+export interface AuthNavOptions {
+  email?: string;
+  message?: string;
+}
+
